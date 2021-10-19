@@ -1,0 +1,79 @@
+//Clasificador de imagenes satelitales para el monitoreo de cultivos en una región de USA utilizando GEE
+
+//Visualizar zona de trabajo
+Map.addLayer(image)
+Map.centerObject(image)
+
+//Definir clases 
+var clases = construccion.merge(bosque).merge(rio).merge(sequia).merge(cultivo).merge(rocas)
+print(clases)
+
+//Train
+var train = image.sampleRegions({
+ collection: clases,
+ properties: ['TC'],
+ scale: 30})
+print(train)
+
+//Clasificador
+
+var classifier = ee.Classifier.smileCart()
+
+//Clasificación
+
+var classify = classifier.train({
+  features: train,
+  classProperty: 'TC',
+  inputProperties: ['B4', 'B3', 'B2', 'B1', 'B5', 'B6', 'B7', 'B10', 'B11', 'sr_aerosol', 'pixel_qa', 'radsat_qa']
+})
+
+var clasificacion = image.classify(classify)
+
+print(clasificacion)
+
+//Observamos las clasificaciones
+
+Map.addLayer(clasificacion, {palette: ['gray', 'green', 'blue', 'yellow', 'red', 'brown'], min: 1, max: 6}, 'clasificacion')
+
+//Cambio de clasificación numérico por lista
+var nombre = ['construccion', 'bosque', 'rio', 'sequia', 'cultivo', 'rocas']
+var renombre = clasificacion.eq([1, 2, 3, 4, 5, 6]).rename(nombre)
+print(renombre)
+
+//Calculo del área correspondiente a cada clase en hectareas
+
+var area = renombre.multiply(ee.Image.pixelArea().divide(10000))
+
+var areaporclase = area.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: region,
+  scale: 30,
+  crs: 'EPSG:4326',
+  maxPixels: 1e12
+  })
+
+//Pasar region a matriz
+
+var areatotal = ee.Number(areaporclase)
+print(areatotal)
+
+//Array para las hectareas
+var a = ee.Array(areaporclase.get('construccion'))
+var b = ee.Array(areaporclase.get('bosque'))
+var c = ee.Array(areaporclase.get('rio'))
+var d = ee.Array(areaporclase.get('sequia'))
+var e = ee.Array(areaporclase.get('cultivo'))
+var f = ee.Array(areaporclase.get('rocas'))
+var array = ee.List([a, b, c, d, e, f])
+
+var Nombres = ee.List(nombre)
+
+//Graficar las hectareas por clase
+
+var chart = ui.Chart.array.values(array, 0, Nombres)
+.setChartType('PieChart')
+.setOptions({
+  is3D: true
+})
+print(chart)
+
